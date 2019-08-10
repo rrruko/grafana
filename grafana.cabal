@@ -4,7 +4,11 @@ name:
 version:
   0.1
 synopsis:
-  small library that provides datatypes corresponding to components of
+  grafana datatypes for dashboards
+description:
+  'grafana' provides datatypes that correspond to components of
+  grafana dashboards, and combinators for constructing dashboards.
+  It should be suitable for a UI that allows users to construct
   grafana dashboards.
 license:
   BSD-3-Clause
@@ -35,3 +39,9 @@ library
   ghc-options:
     -Wall
     -O2
+
+source-repository head
+  type:
+    git
+  location:
+    git://github.com/chessai/grafana.git
