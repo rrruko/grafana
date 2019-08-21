@@ -486,7 +486,7 @@ makeTargets = zipWith
   (\refid query -> Target refid (serializeQuery query))
   refids
   where
-    refids = T.singleton <$> (repeat 'A')
+    refids = fmap (\n -> "I" <> tshow n) [(0 :: Int) ..]
 
 table :: PanelStyles -> Text -> [Column] -> ColumnSort -> [GraphiteQuery] -> QueryPanel
 table style label cols colSort queries = QueryPanel
