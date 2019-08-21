@@ -21,6 +21,7 @@ module Grafana
   , Panel
   , PanelStyles(..)
   , PathComponent(..)
+  , QueryPanel(..)
   , RGBA(..)
   , SortOrder(..)
   , StyleThresholds(..)
