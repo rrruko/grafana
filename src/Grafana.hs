@@ -371,6 +371,29 @@ queryPanelToPairs p =
       GraphPanel ->
         [ "nullPointMode" .= String "connected"
         ]
+        <>
+          case styleUnit (queryPanelStyles p) of
+            Just su ->
+              [ "yaxes" .=
+                  [ object
+                      [ "format" .= su
+                      , "label" .= Null
+                      , "logBase" .= Number 1
+                      , "max" .= Null
+                      , "min" .= Null
+                      , "show" .= True
+                      ]
+                  , object
+                      [ "format" .= String "short"
+                      , "label" .= Null
+                      , "logBase" .= Number 1
+                      , "max" .= Null
+                      , "min" .= Null
+                      , "show" .= True
+                      ]
+                  ]
+              ]
+            Nothing -> []
       _ -> []
 
 instance ToJSON Panel where
