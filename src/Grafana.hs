@@ -545,22 +545,34 @@ data GraphiteQuery
   = HighestCurrent GraphiteQuery !Int
   | AverageSeriesWithWildcards GraphiteQuery !Int
   | AliasSub GraphiteQuery !Text !Text
+  | Alias GraphiteQuery !Text
   | Avg GraphiteQuery
+  | Absolute GraphiteQuery
+  | Offset GraphiteQuery !Int
   | Metric [PathComponent Text]
   | LiteralQuery !Text
   deriving stock (Eq, Read, Show)
 
 serializeQuery :: GraphiteQuery -> Text
-serializeQuery (HighestCurrent q n) =
-  "highestCurrent(" <> serializeQuery q <> "," <> tshow n <> ")"
-serializeQuery (AverageSeriesWithWildcards q n) =
-  "averageSeriesWithWildcards(" <> serializeQuery q <> "," <> tshow n <> ")"
-serializeQuery (AliasSub q a b) =
-  "aliasSub(" <> serializeQuery q <> ",'" <> a <> "','" <> b <> "')"
-serializeQuery (Avg q) = "avg(" <> serializeQuery q <> ")"
-serializeQuery (Metric xs) = T.intercalate "."
-  (serializePathComponent . fmap stripInvalidChars <$> xs)
-serializeQuery (LiteralQuery t) = t
+serializeQuery = \case
+  HighestCurrent q n ->
+    "highestCurrent(" <> serializeQuery q <> "," <> tshow n <> ")"
+  AverageSeriesWithWildcards q n ->
+    "averageSeriesWithWildcards(" <> serializeQuery q <> "," <> tshow n <> ")"
+  AliasSub q a b ->
+    "aliasSub(" <> serializeQuery q <> ",'" <> a <> "','" <> b <> "')"
+  Alias q a ->
+    "alias(" <> serializeQuery q <> ",'" <> a <> "')"
+  Avg q ->
+    "avg(" <> serializeQuery q <> ")"
+  Absolute q ->
+    "absolute(" <> serializeQuery q <> ")"
+  Offset q n ->
+    "offset(" <> serializeQuery q <> "," <> tshow n <> ")"
+  Metric xs ->
+    T.intercalate "." (serializePathComponent . fmap stripInvalidChars <$> xs)
+  LiteralQuery t ->
+    t
 
 stripInvalidChars :: Text -> Text
 stripInvalidChars = T.filter (\c -> isAlphaNum c || c == '-' || c == '_')
