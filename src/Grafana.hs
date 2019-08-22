@@ -120,6 +120,7 @@ data UnitFormat
   | DBmFormat
   | SecondsFormat
   | MillisecondsFormat
+  | BpsFormat
   deriving stock (Eq, Generic, Read, Show)
 
 instance ToJSON UnitFormat where
@@ -129,6 +130,7 @@ instance ToJSON UnitFormat where
     DBmFormat -> "dBm"
     SecondsFormat -> "s"
     MillisecondsFormat -> "ms"
+    BpsFormat -> "bps"
 
 data PanelType
   = GraphPanel
