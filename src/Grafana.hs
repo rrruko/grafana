@@ -9,6 +9,7 @@
       , GeneralizedNewtypeDeriving
       , LambdaCase
       , OverloadedStrings
+      , RecordWildCards 
   #-}
 
 module Grafana
@@ -16,15 +17,17 @@ module Grafana
   , Dashboard(..)
   , GraphiteQuery(..)
   , Gauge(..)
+  , Graph(..)
   , Sparkline(..)
   , UnitFormat(..)
-  , Panel
+  , Panel(..)
   , PanelStyles(..)
   , PathComponent(..)
-  , QueryPanel(..)
   , RGBA(..)
+  , Row(..)
   , SortOrder(..)
   , StyleThresholds(..)
+  , Table(..)
   , Templating(..)
   , TimeAmount(..)
   , TimeRange(..)
@@ -36,15 +39,14 @@ module Grafana
   , defaultGauge
   , defaultSparkline
   , getDashboardJSON
-  , graph
-  , layoutUniformPanels
   , maxDashboardWidth
   , move
-  , panelAt
-  , row
-  , singlestatQuery
-  , table
-  , htmlPanel
+  
+  , rowPanel
+  , graphPanel
+  , tablePanel
+  , textPanel
+  , singlestatPanel
   ) where
 
 import Data.Aeson (ToJSON(..), FromJSON(..))
@@ -132,17 +134,7 @@ instance ToJSON UnitFormat where
     MillisecondsFormat -> "ms"
     BpsFormat -> "bps"
 
-data PanelType
-  = GraphPanel
-  | SinglestatPanel
-  | TablePanel
-  | HeatmapPanel
-  | AlertListPanel
-  | DashboardListPanel
-  | TextPanel
-  | RowPanel
-  deriving stock (Eq, Generic, Read, Show)
-
+  {-
 instance ToJSON PanelType where
   toJSON = \case
     GraphPanel -> "graph"
@@ -153,7 +145,7 @@ instance ToJSON PanelType where
     DashboardListPanel -> "dashboardlist"
     TextPanel -> "text"
     RowPanel -> "row"
-
+-}
 data GridPos = GridPos
   { panelWidth :: !Int
   , panelHeight :: !Int
@@ -192,11 +184,6 @@ instance ToJSON PanelColumns where
   toJSON (PanelColumns x) = case x of
     Nothing -> Array mempty
     Just xs -> toJSON xs
-
-data Panel = Panel
-  { panelQueryPanel :: !QueryPanel
-  , panelGridPos :: !GridPos
-  } deriving stock (Eq, Generic, Read, Show)
 
 data RGBA
   = RGBA !Word8 !Word8 !Word8 !Double
@@ -324,83 +311,106 @@ instance ToJSON PanelStyles where
     , "unit" .= styleUnit o
     ]
 
-data QueryPanel = QueryPanel
-  { queryPanelType :: !PanelType
-  , queryPanelTitle :: !Text
-  , queryPanelQueries :: [GraphiteQuery]
-  , queryPanelColumns :: !PanelColumns
-  , queryPanelStyles :: !PanelStyles
-  , queryPanelContent :: !Text
-  } deriving stock (Eq, Generic, Read, Show)
-
-instance ToJSON QueryPanel where
-  toJSON = object . queryPanelToPairs
-
 instance ToJSON ColumnSort where
   toJSON (ColumnSort n sortOrder) = object
     [ "col" .= n
     , "desc" .= (sortOrder == Descending)
     ]
 
-queryPanelToPairs :: QueryPanel -> [(Text,AE.Value)]
-queryPanelToPairs p =
-  [ "type" .= queryPanelType p
-  , "title" .= queryPanelTitle p
-  , "targets" .= makeTargets (queryPanelQueries p)
-  , "columns" .= queryPanelColumns p
-  , "valueFontSize" .= (String $ tshow (fontsize (queryPanelStyles p)) <> "%")
-  , "content" .= queryPanelContent p
-  , "transparent" .= transparent (queryPanelStyles p)
-  , "mode" .= String "html"
-  ] <>
-    case queryPanelType p of
-      SinglestatPanel ->
-        [ "format" .= styleUnit (queryPanelStyles p)
-        , "thresholds" .=
-            let (StyleThresholds xs) = styleThresholds (queryPanelStyles p)
-            in  T.intercalate "," (tshow <$> xs)
-        , "colorBackground" .= colorBackground (queryPanelStyles p)
-        , "colorValue" .= colorValue (queryPanelStyles p)
-        , "colors" .= colors (queryPanelStyles p)
-        ]
-        <> optionalField "gauge" (gauge (queryPanelStyles p))
-        <> optionalField "sparkline" (sparkline (queryPanelStyles p))
-      TablePanel ->
-        [ "styles" .= [queryPanelStyles p]
-        , "transform" .= ("timeseries_aggregations" :: Text)
-        ]
-        <> optionalField "sort" (columnsSort (queryPanelStyles p))
-      GraphPanel ->
-        [ "nullPointMode" .= String "connected"
-        ]
-        <>
-          case styleUnit (queryPanelStyles p) of
-            Just su ->
-              [ "yaxes" .=
-                  [ object
-                      [ "format" .= su
-                      , "label" .= Null
-                      , "logBase" .= Number 1
-                      , "max" .= Null
-                      , "min" .= Null
-                      , "show" .= True
-                      ]
-                  , object
-                      [ "format" .= String "short"
-                      , "label" .= Null
-                      , "logBase" .= Number 1
-                      , "max" .= Null
-                      , "min" .= Null
-                      , "show" .= True
-                      ]
-                  ]
-              ]
-            Nothing -> []
-      _ -> []
+rowToPairs :: Row -> [(Text, AE.Value)]
+rowToPairs (Row t) = [ "type" .= String "row", "title" .= t ]
+
+singlestatToPairs :: Singlestat -> [(Text, AE.Value)]
+singlestatToPairs (Singlestat {..}) =
+    [ "type" .= String "singlestat"
+    , "title" .= singlestatTitle
+    , "targets" .= makeTargets singlestatQueries
+    , "valueFontSize" .= singlestatFontSize
+    , "mode" .= singlestatMode
+    , "format" .= singlestatUnit
+    , "thresholds" .= singlestatThresholds
+    , "colorBackground" .= singlestatColorBackground
+    , "colorValue" .= singlestatColorValue
+    , "colors" .= singlestatColors
+    ]
+    <> optionalField "gauge" singlestatGauge
+    <> optionalField "sparkline" singlestatSparkline
+
+tableToPairs :: Table -> [(Text, AE.Value)]
+tableToPairs (Table {..}) =
+    [ "type" .= String "table" 
+    , "title" .= tableTitle
+    , "targets" .= makeTargets tableQueries
+    , "columns" .= tableColumns
+    , "valueFontSize" .= tableFontSize
+    , "styles" .= tableStyles
+    , "transform" .= tableTransform
+    ]
+    <> optionalField "sort" tableSort
+
+graphToPairs :: Graph -> [(Text, AE.Value)]
+graphToPairs (Graph {..}) =
+  [ "type" .= String "graph"
+  , "title" .= graphTitle
+  , "targets" .= makeTargets graphQueries
+  , "nullPointMode" .= graphNullPointMode
+  ]
+  <> case graphUnit of
+       Nothing -> []
+       Just su -> 
+         [ "yaxes" .=
+           [ object
+               [ "format" .= su
+               , "label" .= Null
+               , "logBase" .= Number 1
+               , "max" .= Null
+               , "min" .= Null
+               , "show" .= True
+               ]
+           , object
+               [ "format" .= String "short"
+               , "label" .= Null
+               , "logBase" .= Number 1
+               , "max" .= Null
+               , "min" .= Null
+               , "show" .= True
+               ]
+           ]
+         ]
+
+rowPanel :: Row -> GridPos -> Panel
+rowPanel = Panel . rowToPairs
+
+graphPanel :: Graph -> GridPos -> Panel
+graphPanel = Panel . graphToPairs
+
+tablePanel :: Table -> GridPos -> Panel
+tablePanel = Panel . tableToPairs
+
+textPanel :: TextPanel -> GridPos -> Panel
+textPanel = Panel . textPanelToPairs
+
+singlestatPanel :: Singlestat -> GridPos -> Panel
+singlestatPanel = Panel . singlestatToPairs
+
+
+textPanelToPairs :: TextPanel -> [(Text, AE.Value)]
+textPanelToPairs (TextPanel {..}) =
+  [ "type" .= String "text"
+  , "title" .= textTitle
+  , "content" .= textContent
+  , "transparent" .= textIsTransparent
+  ]
+
+data Panel = Panel
+  { panelObject :: [(Text, AE.Value)]
+  , panelGridPos :: GridPos
+  } 
+  deriving stock (Eq, Generic, Read, Show)
 
 instance ToJSON Panel where
   toJSON p = object $
-    ( "gridPos" .= panelGridPos p ) : queryPanelToPairs (panelQueryPanel p)
+    ( "gridPos" .= panelGridPos p ) : panelObject p
 
 data TimeUnit
   = Seconds
@@ -514,32 +524,49 @@ makeTargets = zipWith
   where
     refids = fmap (\n -> "I" <> tshow n) [(0 :: Int) ..]
 
-table :: PanelStyles -> Text -> [Column] -> ColumnSort -> [GraphiteQuery] -> QueryPanel
-table style label cols colSort queries = QueryPanel
-  TablePanel
-  label
-  queries
-  (PanelColumns $ Just cols)
-  (style { columnsSort = Just colSort })
-  ""
+data Table = Table
+  { tableTitle :: Text
+  , tableQueries :: [GraphiteQuery]
+  , tableColumns :: [Column]
+  , tableSort :: Maybe ColumnSort
+  , tableFontSize :: Int
+  , tableStyles :: TableStyles
+  , tableTransform :: TableTransform
+  }
 
-graph :: PanelStyles -> Text -> [GraphiteQuery] -> QueryPanel
-graph style label queries = QueryPanel
-  GraphPanel
-  label
-  queries
-  (PanelColumns Nothing)
-  style
-  ""
+data NullPointMode = Connected
 
-row :: Text -> QueryPanel
-row label = QueryPanel
-  RowPanel
-  label
-  []
-  (PanelColumns Nothing)
-  defaultStyles
-  ""
+instance ToJSON NullPointMode where
+  toJSON Connected = String "connected"
+
+data Graph = Graph
+  { graphTitle :: Text
+  , graphQueries :: [GraphiteQuery]
+  , graphNullPointMode :: NullPointMode
+  , graphUnit :: Maybe UnitFormat
+  }
+
+data TextPanel = TextPanel
+  { textTitle :: Text
+  , textContent :: Text
+  , textIsTransparent :: Bool
+  }
+
+data Singlestat = Singlestat
+  { singlestatTitle :: Text
+  , singlestatQueries :: [GraphiteQuery]
+  , singlestatFontSize :: Int
+  , singlestatUnit :: UnitFormat
+  , singlestatColorBackground :: Bool
+  , singlestatColorValue :: Bool
+  , singlestatColors :: [RGBA]
+  , singlestatMode :: ColorMode
+  , singlestatGauge :: Maybe Gauge
+  , singlestatSparkline :: Maybe Sparkline
+  }
+  deriving (Eq, Show)
+
+newtype Row = Row Text
 
 data GraphiteQuery
   = HighestCurrent GraphiteQuery !Int
@@ -595,31 +622,6 @@ serializePathComponent = \case
 getDashboardJSON :: Dashboard -> ByteString
 getDashboardJSON = BL.toStrict . encodePretty
 
-htmlPanel :: Text -> QueryPanel
-htmlPanel content = QueryPanel
-  TextPanel
-  ""
-  []
-  (PanelColumns Nothing)
-  defaultStyles { transparent = True }
-  content
-
-singlestatQuery :: PanelStyles -> Text -> [GraphiteQuery] -> QueryPanel
-singlestatQuery style label queries = QueryPanel
-  SinglestatPanel
-  label
-  queries
-  (PanelColumns Nothing)
-  style
-  ""
-
-panelAt :: Int -> Int -> Int -> Int -> QueryPanel -> [Panel]
-panelAt left top width height queryPanel =
-  [ Panel
-      queryPanel
-      (GridPos width height left top)
-  ]
-
 move :: Int -> Int -> Panel -> Panel
 move dx dy panel =
   let
@@ -627,13 +629,3 @@ move dx dy panel =
     newPos = GridPos w h (x + dx) (y + dy)
   in
     panel { panelGridPos = newPos }
-
-layoutUniformPanels :: Int -> Int -> Int -> Int -> [QueryPanel] -> [Panel]
-layoutUniformPanels left top width height queryPanels =
-  zipWith
-    Panel
-    queryPanels
-    [ GridPos width height x y
-    | y <- [top, height..]
-    , x <- [left, width..maxDashboardWidth-1]
-    ]
