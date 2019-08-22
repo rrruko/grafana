@@ -521,13 +521,13 @@ table style label cols colSort queries = QueryPanel
   (style { columnsSort = Just colSort })
   ""
 
-graph :: Text -> [GraphiteQuery] -> QueryPanel
-graph label queries = QueryPanel
+graph :: PanelStyles -> Text -> [GraphiteQuery] -> QueryPanel
+graph style label queries = QueryPanel
   GraphPanel
   label
   queries
   (PanelColumns Nothing)
-  defaultStyles
+  style
   ""
 
 row :: Text -> QueryPanel
