@@ -19,13 +19,14 @@ module Grafana
   , GraphiteQuery(..)
   , Gauge(..)
   , Graph(..)
-  , Sparkline(..)
-  , UnitFormat(..)
+  , GridPos(..)
+  , NullPointMode(..)
   , Panel(..)
   , PathComponent(..)
   , RGBA(..)
   , Row(..)
   , SortOrder(..)
+  , Sparkline(..)
   , StyleThresholds(..)
   , Table(..)
   , Target(..)
@@ -33,6 +34,7 @@ module Grafana
   , TimeAmount(..)
   , TimeRange(..)
   , TimeUnit(..)
+  , UnitFormat(..)
 
   , columns
   , defaultDashboard

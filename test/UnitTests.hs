@@ -5,6 +5,7 @@
 
 module Main (main) where
 
+import Data.Aeson ((.=), Value(..), object, toJSON)
 import Data.Foldable (toList)
 import Data.List (group, sort)
 
@@ -20,6 +21,7 @@ unitTests :: TestTree
 unitTests = testGroup "Unit tests"
   [ testCase "makeTargets makes distinct refIds" makeTargetsDistinctRefids
   , graphiteQuerySerialize
+  , panelSerialize
   ]
 
 makeTargetsDistinctRefids :: Assertion
@@ -58,4 +60,50 @@ serializeEscapesBadChars :: Assertion
 serializeEscapesBadChars =
   let query = Metric [Literal "minipops 67 [120.2][source field mix]"]
   in  serializeQuery query @?= "minipops671202sourcefieldmix"
-       
+
+panelSerialize :: TestTree
+panelSerialize = testGroup "Panel serialization"
+  [ testCase "row serialization" rowSerialize
+  , testCase "graph serialization" graphSerialize
+  ]
+
+defGridPos :: GridPos
+defGridPos = GridPos 1 1 0 0
+
+defGridPosJSON :: Value
+defGridPosJSON = 
+  object
+    [ "h" .= Number 1
+    , "w" .= Number 1
+    , "x" .= Number 0
+    , "y" .= Number 0
+    ]
+
+defQueries :: [GraphiteQuery]
+defQueries =
+  [ Metric [Anything, Anything, Anything]
+  , Metric [Anything, Anything, Anything]
+  ] 
+
+rowSerialize :: Assertion
+rowSerialize =
+  toJSON (rowPanel (Row "name") defGridPos) @?= 
+    object 
+      [ "gridPos" .= defGridPosJSON
+      , "title" .= String "name"
+      , "type" .= String "row"
+      ]
+
+graphSerialize :: Assertion
+graphSerialize =
+  toJSON (graphPanel (Graph "name" defQueries Connected Nothing) defGridPos) @?=
+    object
+      [ "gridPos" .= defGridPosJSON
+      , "title" .= String "name"
+      , "type" .= String "graph"
+      , "nullPointMode" .= Connected
+      , "targets" .= 
+          [ object [ "refId" .= String "I0", "target" .= String "*.*.*"]
+          , object [ "refId" .= String "I1", "target" .= String "*.*.*"]
+          ]
+      ]
