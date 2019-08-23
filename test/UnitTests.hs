@@ -130,7 +130,7 @@ graphSerialize =
 tableSerialize :: Assertion
 tableSerialize =
   let
-    table = defaultTable
+    testTable = defaultTable
       { tableTitle = "name"
       , tableQueries = defQueries
       , tableColumns = columns ["Avg", "Current"]
@@ -145,7 +145,7 @@ tableSerialize =
       }
   in
     assertEqJSON
-      (toJSON (tablePanel table defGridPos))
+      (toJSON (tablePanel testTable defGridPos))
       (object
         [ "gridPos" .= defGridPosJSON
         , "title" .= String "name"
@@ -201,9 +201,9 @@ dashboardSerialize =
       , pieChartUnit = Just ShortFormat
       , pieType = Donut
       }
-    row = Row "row name"
+    testRow = Row "row name"
     panels =
-      [pieChartPanel pieChart defGridPos, rowPanel row defGridPos]
+      [pieChartPanel pieChart defGridPos, rowPanel testRow defGridPos]
     dashboard = defaultDashboard
       { dashboardPanels = panels
       , dashboardTime = TimeRange (Interval 6 Hours) Nothing
