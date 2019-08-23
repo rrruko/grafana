@@ -89,7 +89,13 @@ defQueries :: [GraphiteQuery]
 defQueries =
   [ Metric [Anything, Anything, Anything]
   , Metric [Anything, Anything, Anything]
-  ] 
+  ]
+
+defQueriesJSON :: [Value]
+defQueriesJSON =
+  [ object ["refId" .= String "I0", "target" .= String "*.*.*"]
+  , object ["refId" .= String "I1", "target" .= String "*.*.*"]
+  ]
 
 assertEqJSON :: (Show a, Eq a, ToJSON a) => a -> a -> Assertion
 assertEqJSON a b =
@@ -116,10 +122,7 @@ graphSerialize =
       , "title" .= String "name"
       , "type" .= String "graph"
       , "nullPointMode" .= Connected
-      , "targets" .= 
-          [ object [ "refId" .= String "I0", "target" .= String "*.*.*"]
-          , object [ "refId" .= String "I1", "target" .= String "*.*.*"]
-          ]
+      , "targets" .= defQueriesJSON
       ])
 
 tableSerialize :: Assertion
@@ -157,10 +160,7 @@ tableSerialize =
                 , "unit" .= String "percent"
                 ]
             ]
-        , "targets" .= 
-            [ object ["refId" .= String "I0", "target" .= String "*.*.*"]
-            , object ["refId" .= String "I1", "target" .= String "*.*.*"]
-            ]
+        , "targets" .= defQueriesJSON
         , "columns" .= 
             [ object ["text" .= String "Avg", "value" .= String "avg"]
             , object ["text" .= String "Current", "value" .= String "current"]
