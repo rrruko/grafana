@@ -23,6 +23,7 @@ module Grafana
   , GridPos(..)
   , NullPointMode(..)
   , Panel(..)
+  , PanelConfig
   , PathComponent(..)
   , RGBA(..)
   , Row(..)
@@ -51,11 +52,16 @@ module Grafana
   , maxDashboardWidth
   , move
 
+  , row
   , rowPanel
+  , graph
   , graphPanel
+  , table
   , tablePanel
+  , text
   , textPanel
   , serializeQuery
+  , singlestat
   , singlestatPanel
   ) where
 
@@ -76,11 +82,13 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 
+type PanelConfig = [(Text, AE.Value)]
+
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 {-# inlineable tshow #-} -- not exported, should inline anyway
 
-optionalField :: ToJSON a => Text -> Maybe a -> [(Text,AE.Value)]
+optionalField :: ToJSON a => Text -> Maybe a -> PanelConfig
 optionalField key = \case
   Nothing -> []
   Just x -> [ key .= x ]
@@ -148,7 +156,7 @@ instance ToJSON UnitFormat where
     BpsFormat -> "bps"
     ShortFormat -> "short"
     NoFormat -> "none"
-    OtherFormat text -> String text
+    OtherFormat t -> String t
 
 data GridPos = GridPos
   { panelWidth :: !Int
@@ -361,11 +369,11 @@ instance ToJSON ColumnSort where
     , "desc" .= (sortOrder == Descending)
     ]
 
-rowToPairs :: Row -> [(Text, AE.Value)]
-rowToPairs (Row t) = [ "type" .= String "row", "title" .= t ]
+row :: Row -> PanelConfig
+row (Row t) = [ "type" .= String "row", "title" .= t ]
 
-singlestatToPairs :: Singlestat -> [(Text, AE.Value)]
-singlestatToPairs (Singlestat {..}) =
+singlestat :: Singlestat -> PanelConfig
+singlestat (Singlestat {..}) =
     [ "type" .= String "singlestat"
     , "title" .= singlestatTitle
     , "targets" .= makeTargets singlestatQueries
@@ -379,8 +387,8 @@ singlestatToPairs (Singlestat {..}) =
     <> optionalField "gauge" singlestatGauge
     <> optionalField "sparkline" singlestatSparkline
 
-tableToPairs :: Table -> [(Text, AE.Value)]
-tableToPairs (Table {..}) =
+table :: Table -> PanelConfig
+table (Table {..}) =
     [ "type" .= String "table"
     , "title" .= tableTitle
     , "targets" .= makeTargets tableQueries
@@ -391,8 +399,8 @@ tableToPairs (Table {..}) =
     ]
     <> optionalField "sort" tableSort
 
-graphToPairs :: Graph -> [(Text, AE.Value)]
-graphToPairs (Graph {..}) =
+graph :: Graph -> PanelConfig
+graph (Graph {..}) =
   [ "type" .= String "graph"
   , "title" .= graphTitle
   , "targets" .= makeTargets graphQueries
@@ -422,23 +430,23 @@ graphToPairs (Graph {..}) =
          ]
 
 rowPanel :: Row -> GridPos -> Panel
-rowPanel = Panel . rowToPairs
+rowPanel = Panel . row
 
 graphPanel :: Graph -> GridPos -> Panel
-graphPanel = Panel . graphToPairs
+graphPanel = Panel . graph
 
 tablePanel :: Table -> GridPos -> Panel
-tablePanel = Panel . tableToPairs
+tablePanel = Panel . table
 
 textPanel :: TextPanel -> GridPos -> Panel
-textPanel = Panel . textPanelToPairs
+textPanel = Panel . text
 
 singlestatPanel :: Singlestat -> GridPos -> Panel
-singlestatPanel = Panel . singlestatToPairs
+singlestatPanel = Panel . singlestat
 
 
-textPanelToPairs :: TextPanel -> [(Text, AE.Value)]
-textPanelToPairs (TextPanel {..}) =
+text :: TextPanel -> PanelConfig
+text (TextPanel {..}) =
   [ "type" .= String "text"
   , "title" .= textTitle
   , "content" .= textContent
@@ -446,7 +454,7 @@ textPanelToPairs (TextPanel {..}) =
   ]
 
 data Panel = Panel
-  { panelObject :: [(Text, AE.Value)]
+  { panelObject :: PanelConfig
   , panelGridPos :: GridPos
   }
   deriving stock (Eq, Generic, Read, Show)
