@@ -134,9 +134,9 @@ instance ToJSON Templating where
       firstOption = NE.head (templatingOptions t)
 
 optionsRegex :: NonEmpty Text -> Text
-optionsRegex options = "/"
+optionsRegex options = "/^("
   <> T.intercalate "|" (stripInvalidChars <$> NE.toList options)
-  <> "/"
+  <> ")$/"
 
 data UnitFormat
   = PercentUnitFormat
