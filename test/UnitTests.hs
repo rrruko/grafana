@@ -5,7 +5,6 @@
 
 module Main (main) where
 
-import Data.Aeson (ToJSON(..))
 import Data.Aeson ((.=), Value(..), object, toJSON)
 import Data.Aeson.Encode.Pretty (encodePretty)
 import Data.Algorithm.Diff (getGroupedDiff)
@@ -18,6 +17,7 @@ import Test.Tasty.HUnit
 import qualified Data.ByteString.Lazy.Char8 as BC8
 
 import Grafana
+import Grafana.Plugin.PieChart
 
 main :: IO ()
 main = defaultMain (testGroup "Tests" [unitTests])
@@ -50,7 +50,7 @@ graphiteQuerySerialize = testGroup "graphite queries are serialized properly"
   , testCase "aliasSub" serializeAliasSub
   , testCase "escaping chars" serializeEscapesBadChars
   ]
-  
+
 serializeAlias :: Assertion
 serializeAlias =
   let query = Alias (Metric [Anything, Anything, Anything]) "Something else"
@@ -71,13 +71,15 @@ panelSerialize = testGroup "Panel serialization"
   [ testCase "row serialization" rowSerialize
   , testCase "graph serialization" graphSerialize
   , testCase "table serialization" tableSerialize
+  , testCase "pie chart serialization" pieChartSerialize
+  , testCase "dashboard serialization" dashboardSerialize
   ]
 
 defGridPos :: GridPos
 defGridPos = GridPos 1 1 0 0
 
 defGridPosJSON :: Value
-defGridPosJSON = 
+defGridPosJSON =
   object
     [ "h" .= Number 1
     , "w" .= Number 1
@@ -97,17 +99,17 @@ defQueriesJSON =
   , object ["refId" .= String "I1", "target" .= String "*.*.*"]
   ]
 
-assertEqJSON :: (Show a, Eq a, ToJSON a) => a -> a -> Assertion
+assertEqJSON :: Value -> Value -> Assertion
 assertEqJSON a b =
   let prettyJSON = lines . BC8.unpack . encodePretty
       diff = ppDiff (getGroupedDiff (prettyJSON a) (prettyJSON b))
-  in  (a == b) @? diff 
+  in  (a == b) @? diff
 
 rowSerialize :: Assertion
 rowSerialize =
   assertEqJSON
     (toJSON (rowPanel (Row "name") defGridPos))
-    (object 
+    (object
       [ "gridPos" .= defGridPosJSON
       , "title" .= String "name"
       , "type" .= String "row"
@@ -115,7 +117,7 @@ rowSerialize =
 
 graphSerialize :: Assertion
 graphSerialize =
-  assertEqJSON 
+  assertEqJSON
     (toJSON (graphPanel (Graph "name" defQueries Connected Nothing) defGridPos))
     (object
       [ "gridPos" .= defGridPosJSON
@@ -132,7 +134,7 @@ tableSerialize =
       { tableTitle = "name"
       , tableQueries = defQueries
       , tableColumns = columns ["Avg", "Current"]
-      , tableStyles = 
+      , tableStyles =
           [ defaultStyles
               { thresholds = StyleThresholds [5, 10]
               , decimals = 2
@@ -148,7 +150,7 @@ tableSerialize =
         [ "gridPos" .= defGridPosJSON
         , "title" .= String "name"
         , "type" .= String "table"
-        , "styles" .= 
+        , "styles" .=
             [ object
                 [ "pattern" .= String "/.*/"
                 , "alias" .= String ""
@@ -161,10 +163,62 @@ tableSerialize =
                 ]
             ]
         , "targets" .= defQueriesJSON
-        , "columns" .= 
+        , "columns" .=
             [ object ["text" .= String "Avg", "value" .= String "avg"]
             , object ["text" .= String "Current", "value" .= String "current"]
             ]
         , "valueFontSize" .= Number 100
         , "transform" .= String "timeseries_aggregations"
+        ])
+
+pieChartSerialize :: Assertion
+pieChartSerialize =
+  let
+    pieChart = PieChart
+      { pieChartTitle = "name"
+      , pieChartQueries = defQueries
+      , pieChartUnit = Just ShortFormat
+      , pieType = Donut
+      }
+  in
+    assertEqJSON
+      (toJSON (pieChartPanel pieChart defGridPos))
+      (object
+        [ "gridPos" .= defGridPosJSON
+        , "title" .= String "name"
+        , "type" .= String "grafana-piechart-panel"
+        , "pieType" .= String "donut"
+        , "targets" .= defQueriesJSON
+        , "format" .= String "short"
+        ])
+
+dashboardSerialize :: Assertion
+dashboardSerialize =
+  let
+    pieChart = PieChart
+      { pieChartTitle = "name"
+      , pieChartQueries = defQueries
+      , pieChartUnit = Just ShortFormat
+      , pieType = Donut
+      }
+    row = Row "row name"
+    panels =
+      [pieChartPanel pieChart defGridPos, rowPanel row defGridPos]
+    dashboard = defaultDashboard
+      { dashboardPanels = panels
+      , dashboardTime = TimeRange (Interval 6 Hours) Nothing
+      }
+  in
+    assertEqJSON
+      (toJSON dashboard)
+      (object
+        [ "panels" .= panels
+        , "links" .= Array mempty
+        , "tags" .= Array mempty
+        , "title" .= String "New dashboard"
+        , "time" .= object
+            [ "to" .= String "now"
+            , "from" .= String "now-6h"
+            ]
+        , "templating" .= object [ "list" .= Array mempty ]
         ])
