@@ -178,6 +178,7 @@ pieChartSerialize =
       { pieChartTitle = "name"
       , pieChartQueries = defQueries
       , pieChartUnit = Just ShortFormat
+      , pieChartAliasColors = mempty
       , pieType = Donut
       }
   in
@@ -188,6 +189,7 @@ pieChartSerialize =
         , "title" .= String "name"
         , "type" .= String "grafana-piechart-panel"
         , "pieType" .= String "donut"
+        , "aliasColors" .= Object mempty
         , "targets" .= defQueriesJSON
         , "format" .= String "short"
         ])
@@ -199,6 +201,7 @@ dashboardSerialize =
       { pieChartTitle = "name"
       , pieChartQueries = defQueries
       , pieChartUnit = Just ShortFormat
+      , pieChartAliasColors = mempty
       , pieType = Donut
       }
     testRow = Row "row name"

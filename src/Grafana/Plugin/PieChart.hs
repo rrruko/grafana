@@ -6,6 +6,7 @@ module Grafana.Plugin.PieChart where
 
 import Data.Aeson (ToJSON(..))
 import Data.Aeson ((.=), Value(..))
+import Data.Map.Strict (Map)
 import Data.Text (Text)
 
 import qualified Data.Aeson as AE
@@ -23,6 +24,7 @@ data PieChart = PieChart
   { pieChartTitle :: Text
   , pieChartQueries :: [GraphiteQuery]
   , pieChartUnit :: Maybe UnitFormat
+  , pieChartAliasColors :: Map Text RGBA
   , pieType :: PieType
   }
 
@@ -33,6 +35,7 @@ pieChartToPairs (PieChart {..}) =
   , "targets" .= makeTargets pieChartQueries
   , "format" .= pieChartUnit
   , "pieType" .= pieType
+  , "aliasColors" .= pieChartAliasColors
   ]
 
 pieChartPanel :: PieChart -> GridPos -> Panel
