@@ -624,8 +624,16 @@ data Graph = Graph
 data TextPanel = TextPanel
   { textTitle :: Text
   , textContent :: Text
+  , textMode :: TextMode
   , textIsTransparent :: Bool
   }
+
+data TextMode = Markdown | Html
+
+instance ToJSON TextMode where
+  toJSON = \case
+    Markdown -> "markdown"
+    Html -> "html"
 
 data Singlestat = Singlestat
   { singlestatTitle :: Text
