@@ -13,7 +13,8 @@
   #-}
 
 module Grafana
-  ( ColumnSort(..)
+  ( ColorMode(..)
+  , ColumnSort(..)
   , ColumnStyles(..)
   , Dashboard(..)
   , GraphiteQuery(..)
@@ -29,6 +30,7 @@ module Grafana
   , Sparkline(..)
   , StyleThresholds(..)
   , Table(..)
+  , TableTransform(..)
   , Target(..)
   , Templating(..)
   , TimeAmount(..)
@@ -42,6 +44,7 @@ module Grafana
   , defaultGauge
   , defaultSinglestat
   , defaultSparkline
+  , defaultTable
   , getDashboardJSON
   , makeTargets
   , maxDashboardWidth
@@ -573,6 +576,17 @@ data Table = Table
   , tableTransform :: TableTransform
   }
   deriving (Eq, Show)
+
+defaultTable :: Table
+defaultTable = Table
+  { tableTitle = ""
+  , tableQueries = []
+  , tableColumns = []
+  , tableSort = Nothing
+  , tableFontSize = 100
+  , tableStyles = []
+  , tableTransform = TimeSeriesAggregations
+  }
 
 data TableTransform
   = TimeSeriesToColumns

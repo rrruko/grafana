@@ -5,12 +5,17 @@
 
 module Main (main) where
 
+import Data.Aeson (ToJSON(..))
 import Data.Aeson ((.=), Value(..), object, toJSON)
+import Data.Aeson.Encode.Pretty (encodePretty)
+import Data.Algorithm.Diff (getGroupedDiff)
+import Data.Algorithm.DiffOutput (ppDiff)
 import Data.Foldable (toList)
 import Data.List (group, sort)
-
 import Test.Tasty
 import Test.Tasty.HUnit
+
+import qualified Data.ByteString.Lazy.Char8 as BC8
 
 import Grafana
 
@@ -65,6 +70,7 @@ panelSerialize :: TestTree
 panelSerialize = testGroup "Panel serialization"
   [ testCase "row serialization" rowSerialize
   , testCase "graph serialization" graphSerialize
+  , testCase "table serialization" tableSerialize
   ]
 
 defGridPos :: GridPos
@@ -85,19 +91,27 @@ defQueries =
   , Metric [Anything, Anything, Anything]
   ] 
 
+assertEqJSON :: (Show a, Eq a, ToJSON a) => a -> a -> Assertion
+assertEqJSON a b =
+  let prettyJSON = lines . BC8.unpack . encodePretty
+      diff = ppDiff (getGroupedDiff (prettyJSON a) (prettyJSON b))
+  in  (a == b) @? diff 
+
 rowSerialize :: Assertion
 rowSerialize =
-  toJSON (rowPanel (Row "name") defGridPos) @?= 
-    object 
+  assertEqJSON
+    (toJSON (rowPanel (Row "name") defGridPos))
+    (object 
       [ "gridPos" .= defGridPosJSON
       , "title" .= String "name"
       , "type" .= String "row"
-      ]
+      ])
 
 graphSerialize :: Assertion
 graphSerialize =
-  toJSON (graphPanel (Graph "name" defQueries Connected Nothing) defGridPos) @?=
-    object
+  assertEqJSON 
+    (toJSON (graphPanel (Graph "name" defQueries Connected Nothing) defGridPos))
+    (object
       [ "gridPos" .= defGridPosJSON
       , "title" .= String "name"
       , "type" .= String "graph"
@@ -106,4 +120,51 @@ graphSerialize =
           [ object [ "refId" .= String "I0", "target" .= String "*.*.*"]
           , object [ "refId" .= String "I1", "target" .= String "*.*.*"]
           ]
-      ]
+      ])
+
+tableSerialize :: Assertion
+tableSerialize =
+  let
+    table = defaultTable
+      { tableTitle = "name"
+      , tableQueries = defQueries
+      , tableColumns = columns ["Avg", "Current"]
+      , tableStyles = 
+          [ defaultStyles
+              { thresholds = StyleThresholds [5, 10]
+              , decimals = 2
+              , unit = PercentFormat
+              , colorMode = ColorCell
+              }
+          ]
+      }
+  in
+    assertEqJSON
+      (toJSON (tablePanel table defGridPos))
+      (object
+        [ "gridPos" .= defGridPosJSON
+        , "title" .= String "name"
+        , "type" .= String "table"
+        , "styles" .= 
+            [ object
+                [ "pattern" .= String "/.*/"
+                , "alias" .= String ""
+                , "thresholds" .= [String "5.0", String "10.0"]
+                , "decimals" .= Number 2
+                , "type" .= String "number"
+                , "colorMode" .= String "cell"
+                , "colors" .= Array mempty
+                , "unit" .= String "percent"
+                ]
+            ]
+        , "targets" .= 
+            [ object ["refId" .= String "I0", "target" .= String "*.*.*"]
+            , object ["refId" .= String "I1", "target" .= String "*.*.*"]
+            ]
+        , "columns" .= 
+            [ object ["text" .= String "Avg", "value" .= String "avg"]
+            , object ["text" .= String "Current", "value" .= String "current"]
+            ]
+        , "valueFontSize" .= Number 100
+        , "transform" .= String "timeseries_aggregations"
+        ])
