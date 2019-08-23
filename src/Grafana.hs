@@ -26,6 +26,7 @@ module Grafana
   , PathComponent(..)
   , RGBA(..)
   , Row(..)
+  , Singlestat(..)
   , SortOrder(..)
   , Sparkline(..)
   , StyleThresholds(..)
