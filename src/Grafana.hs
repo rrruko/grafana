@@ -28,6 +28,7 @@ module Grafana
   , SortOrder(..)
   , StyleThresholds(..)
   , Table(..)
+  , Target(..)
   , Templating(..)
   , TimeAmount(..)
   , TimeRange(..)
@@ -40,6 +41,7 @@ module Grafana
   , defaultSinglestat
   , defaultSparkline
   , getDashboardJSON
+  , makeTargets
   , maxDashboardWidth
   , move
 
@@ -47,6 +49,7 @@ module Grafana
   , graphPanel
   , tablePanel
   , textPanel
+  , serializeQuery
   , singlestatPanel
   ) where
 
