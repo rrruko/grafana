@@ -21,6 +21,7 @@ module Grafana
   , Gauge(..)
   , Graph(..)
   , GridPos(..)
+  , Heatmap(..)
   , NullPointMode(..)
   , Panel(..)
   , PanelConfig
@@ -44,6 +45,7 @@ module Grafana
   , defaultDashboard
   , defaultStyles
   , defaultGauge
+  , defaultHeatmap
   , defaultSinglestat
   , defaultSparkline
   , defaultTable
@@ -56,6 +58,8 @@ module Grafana
   , rowPanel
   , graph
   , graphPanel
+  , heatmap
+  , heatmapPanel
   , table
   , tablePanel
   , text
@@ -712,3 +716,74 @@ move dx dy panel =
     newPos = GridPos w h (x + dx) (y + dy)
   in
     panel { panelGridPos = newPos }
+
+data Heatmap = Heatmap
+  { heatmapColor :: HeatmapColor
+  , heatmapTitle :: Text
+  , heatmapTargets :: [GraphiteQuery]
+  , heatmapDataFormat :: HeatmapDataFormat
+  }
+
+defaultHeatmap :: Heatmap
+defaultHeatmap = Heatmap
+  { heatmapColor = defaultHeatmapColor
+  , heatmapTitle = ""
+  , heatmapTargets = []
+  , heatmapDataFormat = TsBuckets
+  }
+
+heatmap :: Heatmap -> PanelConfig
+heatmap Heatmap {..} =
+    [ "type" .= String "heatmap"
+    , "title" .= heatmapTitle
+    , "color" .= heatmapColor
+    , "dataFormat" .= heatmapDataFormat
+    , "tooltip" .= object [ "show" .= False, "showHistogram" .= False ]
+    ]
+
+heatmapPanel :: Heatmap -> GridPos -> Panel
+heatmapPanel = Panel . heatmap
+
+data HeatmapColor = HeatmapColor
+  { heatmapColorScheme :: HeatmapColorScheme
+  , heatmapMin :: Maybe Double
+  , heatmapMax :: Maybe Double
+  } deriving (Generic, Show)
+
+instance ToJSON HeatmapColor where
+  toJSON o = object $
+    [ "mode" .= String "spectrum"
+    , "cardColor" .= RGB 0xb4 0xff 0x00
+    , "colorScale" .= String "sqrt"
+    , "exponent" .= Number 0.5
+    , "colorScheme" .= heatmapColorScheme o
+    ]
+    <> optionalField "min" (heatmapMin o)
+    <> optionalField "max" (heatmapMax o)
+
+defaultHeatmapColor :: HeatmapColor
+defaultHeatmapColor = HeatmapColor
+  { heatmapColorScheme = Oranges
+  , heatmapMax = Nothing
+  , heatmapMin = Nothing
+  }
+
+data HeatmapColorScheme
+  = Oranges
+  | RdYlGn
+  deriving (Generic, Show)
+
+instance ToJSON HeatmapColorScheme where
+  toJSON = \case
+    Oranges -> String "interpolateOranges"
+    RdYlGn -> String "interpolateRdYlGn"
+
+data HeatmapDataFormat
+  = Timeseries
+  | TsBuckets
+  deriving (Generic, Show)
+
+instance ToJSON HeatmapDataFormat where
+  toJSON = \case
+    Timeseries -> String "timeseries"
+    TsBuckets -> String "tsbuckets"
