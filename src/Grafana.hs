@@ -142,6 +142,7 @@ data UnitFormat
   = PercentUnitFormat
   | PercentFormat
   | DBmFormat
+  | DbFormat
   | SecondsFormat
   | MillisecondsFormat
   | BpsFormat
@@ -155,6 +156,7 @@ instance ToJSON UnitFormat where
     PercentFormat -> "percent"
     PercentUnitFormat -> "percentunit"
     DBmFormat -> "dBm"
+    DbFormat -> "dB"
     SecondsFormat -> "s"
     MillisecondsFormat -> "ms"
     BpsFormat -> "bps"
