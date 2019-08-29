@@ -386,13 +386,13 @@ singlestat (Singlestat {..}) =
     , "targets" .= makeTargets singlestatQueries
     , "valueFontSize" .= singlestatFontSize
     , "format" .= singlestatUnit
-    , "thresholds" .= singlestatThresholds
     , "colorBackground" .= singlestatColorBackground
     , "colorValue" .= singlestatColorValue
     , "colors" .= singlestatColors
     ]
     <> optionalField "gauge" singlestatGauge
     <> optionalField "sparkline" singlestatSparkline
+    <> optionalField "thresholds" singlestatThresholds
 
 table :: Table -> PanelConfig
 table (Table {..}) =
