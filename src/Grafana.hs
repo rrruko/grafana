@@ -45,6 +45,7 @@ module Grafana
   , defaultDashboard
   , defaultStyles
   , defaultGauge
+  , defaultGraph
   , defaultHeatmap
   , defaultSinglestat
   , defaultSparkline
@@ -411,6 +412,8 @@ graph (Graph {..}) =
   , "title" .= graphTitle
   , "targets" .= makeTargets graphQueries
   , "nullPointMode" .= graphNullPointMode
+  , "bars" .= graphHasBars
+  , "steppedLine" .= graphHasSteppedLine
   ]
   <> case graphUnit of
        Nothing -> []
@@ -625,6 +628,18 @@ data Graph = Graph
   , graphQueries :: [GraphiteQuery]
   , graphNullPointMode :: NullPointMode
   , graphUnit :: Maybe UnitFormat
+  , graphHasBars :: Bool
+  , graphHasSteppedLine :: Bool
+  }
+
+defaultGraph :: Graph
+defaultGraph = Graph
+  { graphTitle = ""
+  , graphQueries = []
+  , graphNullPointMode = Connected
+  , graphUnit = Nothing
+  , graphHasBars = False
+  , graphHasSteppedLine = False
   }
 
 data TextPanel = TextPanel

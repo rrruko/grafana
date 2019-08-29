@@ -118,13 +118,17 @@ rowSerialize =
 graphSerialize :: Assertion
 graphSerialize =
   assertEqJSON
-    (toJSON (graphPanel (Graph "name" defQueries Connected Nothing) defGridPos))
+    (toJSON (graphPanel
+      (defaultGraph { graphTitle = "name", graphQueries = defQueries })
+      defGridPos))
     (object
       [ "gridPos" .= defGridPosJSON
       , "title" .= String "name"
       , "type" .= String "graph"
       , "nullPointMode" .= Connected
       , "targets" .= defQueriesJSON
+      , "bars" .= False
+      , "steppedLine" .= False
       ])
 
 tableSerialize :: Assertion
