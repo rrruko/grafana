@@ -58,11 +58,7 @@ bottoml :: Layout a -> Int
 bottoml Empty = 0
 bottoml (Layout _ r) = bottom r
 
-rowFits ::
-     Int
-  -> Int
-  -> Int
-  -> [Rect]
+rowFits :: Int -> Int -> Int -> [Rect]
 rowFits maxWidth itemCount rowHeight =
   fmap (\x -> Rect x (x+width) 0 rowHeight) xs
   where
@@ -70,10 +66,15 @@ rowFits maxWidth itemCount rowHeight =
     width = maxWidth `div` itemCount
     padding = maxWidth `mod` itemCount `div` 2
 
-fitToRow ::
-     Int
-  -> Int
-  -> [Rect -> Layout a]
-  -> Layout a
+fitToRow :: Int -> Int -> [Rect -> Layout a] -> Layout a
 fitToRow maxWidth rowHeight items = fold $
   zipWith ($) items (rowFits maxWidth (length items) rowHeight)
+
+fillRows :: Int -> Int -> Int -> [Rect -> Layout a] -> Layout a
+fillRows maxWidth rowHeight cols items
+  | null thisRow = Empty
+  | otherwise =
+      fold (zipWith ($) thisRow (rowFits maxWidth cols rowHeight))
+        `atop` fillRows maxWidth rowHeight cols rest
+  where
+  (thisRow, rest) = splitAt cols items
