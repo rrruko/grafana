@@ -9,42 +9,65 @@
       , GeneralizedNewtypeDeriving
       , LambdaCase
       , OverloadedStrings
+      , RecordWildCards
   #-}
 
 module Grafana
-  ( ColumnSort(..)
+  ( ColorMode(..)
+  , ColumnSort(..)
+  , ColumnStyles(..)
   , Dashboard(..)
   , GraphiteQuery(..)
   , Gauge(..)
-  , Sparkline(..)
-  , UnitFormat(..)
-  , Panel
-  , PanelStyles(..)
+  , Graph(..)
+  , GridPos(..)
+  , Heatmap(..)
+  , NullPointMode(..)
+  , Panel(..)
+  , PanelConfig
   , PathComponent(..)
-  , QueryPanel(..)
   , RGBA(..)
+  , Row(..)
+  , Singlestat(..)
   , SortOrder(..)
+  , Sparkline(..)
   , StyleThresholds(..)
+  , Table(..)
+  , TableTransform(..)
+  , Target(..)
   , Templating(..)
   , TimeAmount(..)
   , TimeRange(..)
   , TimeUnit(..)
+  , UnitFormat(..)
 
   , columns
   , defaultDashboard
   , defaultStyles
   , defaultGauge
+  , defaultGraph
+  , defaultHeatmap
+  , defaultSinglestat
   , defaultSparkline
+  , defaultTable
   , getDashboardJSON
-  , graph
-  , layoutUniformPanels
+  , makeTargets
   , maxDashboardWidth
   , move
-  , panelAt
+
   , row
-  , singlestatQuery
+  , rowPanel
+  , graph
+  , graphPanel
+  , heatmap
+  , heatmapPanel
   , table
-  , htmlPanel
+  , tablePanel
+  , text
+  , textPanel
+  , serializeQuery
+  , singlestat
+  , singlestatPanel
   ) where
 
 import Data.Aeson (ToJSON(..), FromJSON(..))
@@ -64,11 +87,13 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 
+type PanelConfig = [(Text, AE.Value)]
+
 tshow :: Show a => a -> Text
 tshow = T.pack . show
 {-# inlineable tshow #-} -- not exported, should inline anyway
 
-optionalField :: ToJSON a => Text -> Maybe a -> [(Text,AE.Value)]
+optionalField :: ToJSON a => Text -> Maybe a -> PanelConfig
 optionalField key = \case
   Nothing -> []
   Just x -> [ key .= x ]
@@ -110,17 +135,21 @@ instance ToJSON Templating where
       firstOption = NE.head (templatingOptions t)
 
 optionsRegex :: NonEmpty Text -> Text
-optionsRegex options = "/"
+optionsRegex options = "/^("
   <> T.intercalate "|" (stripInvalidChars <$> NE.toList options)
-  <> "/"
+  <> ")$/"
 
 data UnitFormat
   = PercentUnitFormat
   | PercentFormat
   | DBmFormat
+  | DbFormat
   | SecondsFormat
   | MillisecondsFormat
   | BpsFormat
+  | ShortFormat
+  | NoFormat
+  | OtherFormat Text
   deriving stock (Eq, Generic, Read, Show)
 
 instance ToJSON UnitFormat where
@@ -128,31 +157,13 @@ instance ToJSON UnitFormat where
     PercentFormat -> "percent"
     PercentUnitFormat -> "percentunit"
     DBmFormat -> "dBm"
+    DbFormat -> "dB"
     SecondsFormat -> "s"
     MillisecondsFormat -> "ms"
     BpsFormat -> "bps"
-
-data PanelType
-  = GraphPanel
-  | SinglestatPanel
-  | TablePanel
-  | HeatmapPanel
-  | AlertListPanel
-  | DashboardListPanel
-  | TextPanel
-  | RowPanel
-  deriving stock (Eq, Generic, Read, Show)
-
-instance ToJSON PanelType where
-  toJSON = \case
-    GraphPanel -> "graph"
-    SinglestatPanel -> "singlestat"
-    TablePanel -> "table"
-    HeatmapPanel -> "heatmap"
-    AlertListPanel -> "alertlist"
-    DashboardListPanel -> "dashboardlist"
-    TextPanel -> "text"
-    RowPanel -> "row"
+    ShortFormat -> "short"
+    NoFormat -> "none"
+    OtherFormat t -> String t
 
 data GridPos = GridPos
   { panelWidth :: !Int
@@ -192,11 +203,6 @@ instance ToJSON PanelColumns where
   toJSON (PanelColumns x) = case x of
     Nothing -> Array mempty
     Just xs -> toJSON xs
-
-data Panel = Panel
-  { panelQueryPanel :: !QueryPanel
-  , panelGridPos :: !GridPos
-  } deriving stock (Eq, Generic, Read, Show)
 
 data RGBA
   = RGBA !Word8 !Word8 !Word8 !Double
@@ -278,63 +284,91 @@ instance ToJSON Sparkline where
     , "show" .= True
     ]
 
-data PanelStyles = PanelStyles
-  { alias :: !Text
-  , colorMode :: !Text
-  , colors :: [RGBA]
-  , columnsSort :: !(Maybe ColumnSort)
-  , decimals :: !Int
-  , fontsize :: !Int
-  , styleThresholds :: !(StyleThresholds Double)
-  , styleUnit :: !(Maybe UnitFormat)
-  , transparent :: !Bool
-  , gauge :: !(Maybe Gauge)
-  , colorBackground :: !Bool
-  , colorValue :: !Bool
-  , sparkline :: !(Maybe Sparkline)
-  } deriving stock (Eq, Generic, Read, Show)
+data StyleType
+  = NumberStyleType
+  | StringStyleType
+  | DateStyleType
+  | HiddenStyleType
+  deriving (Eq, Show)
 
-defaultStyles :: PanelStyles
-defaultStyles = PanelStyles
+instance ToJSON StyleType where
+  toJSON = \case
+    NumberStyleType -> "number"
+    StringStyleType -> "string"
+    DateStyleType -> "date"
+    HiddenStyleType -> "hidden"
+
+data ColumnStyles = ColumnStyles
+  { alias :: !Text
+  , colorMode :: !ColorMode
+  , colors :: [RGBA]
+  , decimals :: !Int
+  , patternRegex :: !Text
+  , thresholds :: !(StyleThresholds Double)
+  , unit :: !UnitFormat
+  , styleType :: StyleType
+  , dateFormat :: Maybe Text
+  }
+  deriving (Eq, Show)
+
+data ColorMode
+  = ColorDisabled
+  | ColorCell
+  | ColorValue
+  | ColorRow
+  deriving (Eq, Show)
+
+instance ToJSON ColorMode where
+  toJSON = \case
+    ColorDisabled -> Null
+    ColorCell -> String "cell"
+    ColorValue -> String "value"
+    ColorRow -> String "row"
+
+defaultStyles :: ColumnStyles
+defaultStyles = ColumnStyles
   { alias = ""
-  , colorMode = "cell"
+  , colorMode = ColorDisabled
   , colors = []
-  , columnsSort = Nothing
+  , dateFormat = Nothing
   , decimals = 2
-  , fontsize = 80
-  , styleThresholds = StyleThresholds []
-  , styleUnit = Nothing
-  , transparent = False
-  , gauge = Nothing
-  , colorBackground = True
-  , colorValue = False
-  , sparkline = Nothing
+  , patternRegex = "/.*/"
+  , styleType = NumberStyleType
+  , thresholds = StyleThresholds []
+  , unit = ShortFormat
   }
 
-instance ToJSON PanelStyles where
+data Thresholds = Thresholds Double Double
+  deriving (Eq, Show)
+
+instance ToJSON Thresholds where
+  toJSON (Thresholds l u) = String (tshow l <> "," <> tshow u)
+
+defaultSinglestat :: Singlestat
+defaultSinglestat = Singlestat
+  { singlestatTitle = ""
+  , singlestatQueries = []
+  , singlestatFontSize = 100
+  , singlestatUnit = NoFormat
+  , singlestatColorBackground = False
+  , singlestatColorValue = True
+  , singlestatColors = []
+  , singlestatGauge = Nothing
+  , singlestatSparkline = Nothing
+  , singlestatThresholds = Nothing
+  }
+
+instance ToJSON ColumnStyles where
   toJSON o = object
     [ "alias" .= alias o
     , "colorMode" .= colorMode o
     , "colors" .= colors o
     , "decimals" .= decimals o
-    , "unit" .= String "short"
-    , "type" .= String "number"
-    , "pattern" .= String "/.*/"
-    , "thresholds" .= fmap tshow (styleThresholds o)
-    , "unit" .= styleUnit o
+    , "unit" .= unit o
+    , "type" .= styleType o
+    , "pattern" .= patternRegex o
+    , "thresholds" .= fmap tshow (thresholds o)
     ]
-
-data QueryPanel = QueryPanel
-  { queryPanelType :: !PanelType
-  , queryPanelTitle :: !Text
-  , queryPanelQueries :: [GraphiteQuery]
-  , queryPanelColumns :: !PanelColumns
-  , queryPanelStyles :: !PanelStyles
-  , queryPanelContent :: !Text
-  } deriving stock (Eq, Generic, Read, Show)
-
-instance ToJSON QueryPanel where
-  toJSON = object . queryPanelToPairs
 
 instance ToJSON ColumnSort where
   toJSON (ColumnSort n sortOrder) = object
@@ -342,65 +376,101 @@ instance ToJSON ColumnSort where
     , "desc" .= (sortOrder == Descending)
     ]
 
-queryPanelToPairs :: QueryPanel -> [(Text,AE.Value)]
-queryPanelToPairs p =
-  [ "type" .= queryPanelType p
-  , "title" .= queryPanelTitle p
-  , "targets" .= makeTargets (queryPanelQueries p)
-  , "columns" .= queryPanelColumns p
-  , "valueFontSize" .= (String $ tshow (fontsize (queryPanelStyles p)) <> "%")
-  , "content" .= queryPanelContent p
-  , "transparent" .= transparent (queryPanelStyles p)
-  , "mode" .= String "html"
-  ] <>
-    case queryPanelType p of
-      SinglestatPanel ->
-        [ "format" .= styleUnit (queryPanelStyles p)
-        , "thresholds" .=
-            let (StyleThresholds xs) = styleThresholds (queryPanelStyles p)
-            in  T.intercalate "," (tshow <$> xs)
-        , "colorBackground" .= colorBackground (queryPanelStyles p)
-        , "colorValue" .= colorValue (queryPanelStyles p)
-        , "colors" .= colors (queryPanelStyles p)
-        ]
-        <> optionalField "gauge" (gauge (queryPanelStyles p))
-        <> optionalField "sparkline" (sparkline (queryPanelStyles p))
-      TablePanel ->
-        [ "styles" .= [queryPanelStyles p]
-        , "transform" .= ("timeseries_aggregations" :: Text)
-        ]
-        <> optionalField "sort" (columnsSort (queryPanelStyles p))
-      GraphPanel ->
-        [ "nullPointMode" .= String "connected"
-        ]
-        <>
-          case styleUnit (queryPanelStyles p) of
-            Just su ->
-              [ "yaxes" .=
-                  [ object
-                      [ "format" .= su
-                      , "label" .= Null
-                      , "logBase" .= Number 1
-                      , "max" .= Null
-                      , "min" .= Null
-                      , "show" .= True
-                      ]
-                  , object
-                      [ "format" .= String "short"
-                      , "label" .= Null
-                      , "logBase" .= Number 1
-                      , "max" .= Null
-                      , "min" .= Null
-                      , "show" .= True
-                      ]
-                  ]
-              ]
-            Nothing -> []
-      _ -> []
+row :: Row -> PanelConfig
+row (Row t) = [ "type" .= String "row", "title" .= t ]
+
+singlestat :: Singlestat -> PanelConfig
+singlestat (Singlestat {..}) =
+    [ "type" .= String "singlestat"
+    , "title" .= singlestatTitle
+    , "targets" .= makeTargets singlestatQueries
+    , "valueFontSize" .= singlestatFontSize
+    , "format" .= singlestatUnit
+    , "colorBackground" .= singlestatColorBackground
+    , "colorValue" .= singlestatColorValue
+    , "colors" .= singlestatColors
+    ]
+    <> optionalField "gauge" singlestatGauge
+    <> optionalField "sparkline" singlestatSparkline
+    <> optionalField "thresholds" singlestatThresholds
+
+table :: Table -> PanelConfig
+table (Table {..}) =
+    [ "type" .= String "table"
+    , "title" .= tableTitle
+    , "targets" .= makeTargets tableQueries
+    , "columns" .= tableColumns
+    , "valueFontSize" .= tableFontSize
+    , "styles" .= tableStyles
+    , "transform" .= tableTransform
+    ]
+    <> optionalField "sort" tableSort
+
+graph :: Graph -> PanelConfig
+graph (Graph {..}) =
+  [ "type" .= String "graph"
+  , "title" .= graphTitle
+  , "targets" .= makeTargets graphQueries
+  , "nullPointMode" .= graphNullPointMode
+  , "bars" .= graphHasBars
+  , "steppedLine" .= graphHasSteppedLine
+  ]
+  <> case graphUnit of
+       Nothing -> []
+       Just su ->
+         [ "yaxes" .=
+           [ object
+               [ "format" .= su
+               , "label" .= Null
+               , "logBase" .= Number 1
+               , "max" .= Null
+               , "min" .= Null
+               , "show" .= True
+               ]
+           , object
+               [ "format" .= String "short"
+               , "label" .= Null
+               , "logBase" .= Number 1
+               , "max" .= Null
+               , "min" .= Null
+               , "show" .= True
+               ]
+           ]
+         ]
+
+rowPanel :: Row -> GridPos -> Panel
+rowPanel = Panel . row
+
+graphPanel :: Graph -> GridPos -> Panel
+graphPanel = Panel . graph
+
+tablePanel :: Table -> GridPos -> Panel
+tablePanel = Panel . table
+
+textPanel :: TextPanel -> GridPos -> Panel
+textPanel = Panel . text
+
+singlestatPanel :: Singlestat -> GridPos -> Panel
+singlestatPanel = Panel . singlestat
+
+
+text :: TextPanel -> PanelConfig
+text (TextPanel {..}) =
+  [ "type" .= String "text"
+  , "title" .= textTitle
+  , "content" .= textContent
+  , "transparent" .= textIsTransparent
+  ]
+
+data Panel = Panel
+  { panelObject :: PanelConfig
+  , panelGridPos :: GridPos
+  }
+  deriving stock (Eq, Generic, Read, Show)
 
 instance ToJSON Panel where
   toJSON p = object $
-    ( "gridPos" .= panelGridPos p ) : queryPanelToPairs (panelQueryPanel p)
+    ( "gridPos" .= panelGridPos p ) : panelObject p
 
 data TimeUnit
   = Seconds
@@ -514,32 +584,93 @@ makeTargets = zipWith
   where
     refids = fmap (\n -> "I" <> tshow n) [(0 :: Int) ..]
 
-table :: PanelStyles -> Text -> [Column] -> ColumnSort -> [GraphiteQuery] -> QueryPanel
-table style label cols colSort queries = QueryPanel
-  TablePanel
-  label
-  queries
-  (PanelColumns $ Just cols)
-  (style { columnsSort = Just colSort })
-  ""
+data Table = Table
+  { tableTitle :: Text
+  , tableQueries :: [GraphiteQuery]
+  , tableColumns :: [Column]
+  , tableSort :: Maybe ColumnSort
+  , tableFontSize :: Int
+  , tableStyles :: [ColumnStyles]
+  , tableTransform :: TableTransform
+  }
+  deriving (Eq, Show)
 
-graph :: PanelStyles -> Text -> [GraphiteQuery] -> QueryPanel
-graph style label queries = QueryPanel
-  GraphPanel
-  label
-  queries
-  (PanelColumns Nothing)
-  style
-  ""
+defaultTable :: Table
+defaultTable = Table
+  { tableTitle = ""
+  , tableQueries = []
+  , tableColumns = []
+  , tableSort = Nothing
+  , tableFontSize = 100
+  , tableStyles = []
+  , tableTransform = TimeSeriesAggregations
+  }
 
-row :: Text -> QueryPanel
-row label = QueryPanel
-  RowPanel
-  label
-  []
-  (PanelColumns Nothing)
-  defaultStyles
-  ""
+data TableTransform
+  = TimeSeriesToColumns
+  | TimeSeriesToRows
+  | TimeSeriesAggregations
+  deriving (Eq, Show)
+
+instance ToJSON TableTransform where
+  toJSON = \case
+    TimeSeriesToColumns -> "timeseries_to_columns"
+    TimeSeriesToRows -> "timeseries_to_rows"
+    TimeSeriesAggregations -> "timeseries_aggregations"
+
+data NullPointMode = Connected
+
+instance ToJSON NullPointMode where
+  toJSON Connected = String "connected"
+
+data Graph = Graph
+  { graphTitle :: Text
+  , graphQueries :: [GraphiteQuery]
+  , graphNullPointMode :: NullPointMode
+  , graphUnit :: Maybe UnitFormat
+  , graphHasBars :: Bool
+  , graphHasSteppedLine :: Bool
+  }
+
+defaultGraph :: Graph
+defaultGraph = Graph
+  { graphTitle = ""
+  , graphQueries = []
+  , graphNullPointMode = Connected
+  , graphUnit = Nothing
+  , graphHasBars = False
+  , graphHasSteppedLine = False
+  }
+
+data TextPanel = TextPanel
+  { textTitle :: Text
+  , textContent :: Text
+  , textMode :: TextMode
+  , textIsTransparent :: Bool
+  }
+
+data TextMode = Markdown | Html
+
+instance ToJSON TextMode where
+  toJSON = \case
+    Markdown -> "markdown"
+    Html -> "html"
+
+data Singlestat = Singlestat
+  { singlestatTitle :: Text
+  , singlestatQueries :: [GraphiteQuery]
+  , singlestatFontSize :: Int
+  , singlestatUnit :: UnitFormat
+  , singlestatColorBackground :: Bool
+  , singlestatColorValue :: Bool
+  , singlestatColors :: [RGBA]
+  , singlestatGauge :: Maybe Gauge
+  , singlestatSparkline :: Maybe Sparkline
+  , singlestatThresholds :: Maybe Thresholds
+  }
+  deriving (Eq, Show)
+
+newtype Row = Row Text
 
 data GraphiteQuery
   = HighestCurrent GraphiteQuery !Int
@@ -595,31 +726,6 @@ serializePathComponent = \case
 getDashboardJSON :: Dashboard -> ByteString
 getDashboardJSON = BL.toStrict . encodePretty
 
-htmlPanel :: Text -> QueryPanel
-htmlPanel content = QueryPanel
-  TextPanel
-  ""
-  []
-  (PanelColumns Nothing)
-  defaultStyles { transparent = True }
-  content
-
-singlestatQuery :: PanelStyles -> Text -> [GraphiteQuery] -> QueryPanel
-singlestatQuery style label queries = QueryPanel
-  SinglestatPanel
-  label
-  queries
-  (PanelColumns Nothing)
-  style
-  ""
-
-panelAt :: Int -> Int -> Int -> Int -> QueryPanel -> [Panel]
-panelAt left top width height queryPanel =
-  [ Panel
-      queryPanel
-      (GridPos width height left top)
-  ]
-
 move :: Int -> Int -> Panel -> Panel
 move dx dy panel =
   let
@@ -628,12 +734,73 @@ move dx dy panel =
   in
     panel { panelGridPos = newPos }
 
-layoutUniformPanels :: Int -> Int -> Int -> Int -> [QueryPanel] -> [Panel]
-layoutUniformPanels left top width height queryPanels =
-  zipWith
-    Panel
-    queryPanels
-    [ GridPos width height x y
-    | y <- [top, height..]
-    , x <- [left, width..maxDashboardWidth-1]
+data Heatmap = Heatmap
+  { heatmapColor :: HeatmapColor
+  , heatmapTitle :: Text
+  , heatmapTargets :: [GraphiteQuery]
+  , heatmapDataFormat :: HeatmapDataFormat
+  }
+
+defaultHeatmap :: Heatmap
+defaultHeatmap = Heatmap
+  { heatmapColor = defaultHeatmapColor
+  , heatmapTitle = ""
+  , heatmapTargets = []
+  , heatmapDataFormat = TsBuckets
+  }
+
+heatmap :: Heatmap -> PanelConfig
+heatmap Heatmap {..} =
+    [ "type" .= String "heatmap"
+    , "title" .= heatmapTitle
+    , "color" .= heatmapColor
+    , "dataFormat" .= heatmapDataFormat
+    , "tooltip" .= object [ "show" .= False, "showHistogram" .= False ]
     ]
+
+heatmapPanel :: Heatmap -> GridPos -> Panel
+heatmapPanel = Panel . heatmap
+
+data HeatmapColor = HeatmapColor
+  { heatmapColorScheme :: HeatmapColorScheme
+  , heatmapMin :: Maybe Double
+  , heatmapMax :: Maybe Double
+  } deriving (Generic, Show)
+
+instance ToJSON HeatmapColor where
+  toJSON o = object $
+    [ "mode" .= String "spectrum"
+    , "cardColor" .= RGB 0xb4 0xff 0x00
+    , "colorScale" .= String "sqrt"
+    , "exponent" .= Number 0.5
+    , "colorScheme" .= heatmapColorScheme o
+    ]
+    <> optionalField "min" (heatmapMin o)
+    <> optionalField "max" (heatmapMax o)
+
+defaultHeatmapColor :: HeatmapColor
+defaultHeatmapColor = HeatmapColor
+  { heatmapColorScheme = Oranges
+  , heatmapMax = Nothing
+  , heatmapMin = Nothing
+  }
+
+data HeatmapColorScheme
+  = Oranges
+  | RdYlGn
+  deriving (Generic, Show)
+
+instance ToJSON HeatmapColorScheme where
+  toJSON = \case
+    Oranges -> String "interpolateOranges"
+    RdYlGn -> String "interpolateRdYlGn"
+
+data HeatmapDataFormat
+  = Timeseries
+  | TsBuckets
+  deriving (Generic, Show)
+
+instance ToJSON HeatmapDataFormat where
+  toJSON = \case
+    Timeseries -> String "timeseries"
+    TsBuckets -> String "tsbuckets"
