@@ -4,7 +4,7 @@ name:
 version:
   0.1
 synopsis:
-  grafana datatypes for dashboards
+  API for creating grafana dashboards represented as json
 description:
   'grafana' provides datatypes that correspond to components of
   grafana dashboards, and combinators for constructing dashboards.
